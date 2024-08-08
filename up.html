@@ -2,43 +2,194 @@
 <html lang="en">
 <head>
 	<meta charset="UTF-8">
-	<title>File upload</title>
+
+	
+	<style>
+
+		label {
+  display: block;
+  margin-bottom: 15px;
+}
+
+input {
+  display: block;
+}
+
+body {
+  display: flex;
+}
+
+.container {
+  border: 1px solid #dedede;
+  margin-left: 10px;
+ align-items: center;
+  padding: 20px;
+  cursor: pointer;
+}
+
+.container button {
+  margin: 15px 0;
+}
+
+.log {
+  color: #333;
+}
+		
+		</style>
+	</style><title>File upload</title>
 </head>
 <body>
-<form>
-<input type="file" id="file" />
-<input type="text" id="title" name="title" placeholder="Title" />
-<button id="button">Submit</button>
+<form class="form">
+<label>
+  GitHub Access Token: <input required name="token" placeholder="ghp_xxxxxxx" />
+</label>
+
+<label>
+  GitHub Repo Owner: <input required name="owner" placeholder="" />
+</label>
+  <label>
+  GitHub Repo Name: <input required name="repo" placeholder="" />
+</label>
+  <button type="submit"> upload </button>
+  <div class="log"></div>
 </form>
+
+<div class="container">
+  <h5>Image info</h5>
+  <input type="file" accept="image/*" class="local" />
+  <button class="paste"> Paste from clipboard </button>
+  <div class="img"></div>
+</div>
 <script>
-var sendFile = function( file, url ){
-	var request2 = new XMLHttpRequest;
-	request2.open( "PUT", url, false );
-	request2.send( file );
+// upload image to github
+function uploadImage(data) {
+  return fetch(
+    `https://api.github.com/repos/${data.owner}/${data.repo}/contents/${data.name}`,
+    {
+      method: "PUT",
+      headers: {
+        Accept: "application/vnd.github+json",
+        Authorization: `Bearer ${data.token}`
+      },
+      body: JSON.stringify({
+        message: "upload image from api",
+        content: data.content
+      })
+    }
+  ).then((res) => res.json());
+}
+
+function insertImage(src) {
+  const newImage = document.createElement("img");
+  newImage.src = src;
+  document.querySelector(".img").innerHTML = newImage.outerHTML;
+}
+
+function getRandomName(type) {
+  if (type.endsWith("png")) {
+    return [Date.now(), ".png"].join("");
+  }
+  return [Date.now(), ".jpeg"].join("");
+}
+
+function blobToBase64(blob) {
+  return new Promise((resolve) => {
+    const fileReader = new FileReader();
+    fileReader.onload = () => {
+      const srcData = fileReader.result;
+      resolve(srcData);
+    };
+    fileReader.readAsDataURL(blob);
+  });
+}
+
+async function parseClipboardData(callback) {
+  const items = await navigator.clipboard.read().catch((err) => {
+    console.error(err);
+  });
+  for (let item of items) {
+    for (let type of item.types) {
+      if (type.startsWith("image/")) {
+        console.log("item-->: ", item);
+        item
+          .getType(type)
+          .then(blobToBase64)
+          .then((srcData) => {
+            insertImage(srcData);
+            callback &&
+              callback({
+                content: srcData,
+                name: getRandomName(type),
+                type: type
+              });
+          });
+        return true;
+      }
+    }
+  }
+}
+
+function handleImageChange(callback) {
+  const $file = document.querySelector(".local");
+  $file.addEventListener("change", (event) => {
+    const selectedfile = event.target.files;
+    if (selectedfile.length > 0) {
+      const [imageFile] = selectedfile;
+      blobToBase64(imageFile).then((srcData) => {
+        insertImage(srcData);
+        callback &&
+          callback({
+            content: srcData,
+            name: imageFile.name,
+            type: imageFile.type
+          });
+      });
+    }
+  });
+
+  document.querySelector(".paste").onclick = () => {
+    parseClipboardData(callback);
+  };
+}
+
+window.onload = () => {
+  const $form = document.querySelector(".form");
+  let image = null;
+  $form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (!image) {
+      alert('Image is empty, please select or paste');
+      return;
+    }
+    const formData = new FormData($form);
+    const data = {}
+    for (let [key, value] of formData.entries()) {
+      data[key] = value;
+    }
+    // 获取图片信息
+    uploadImage({
+      ...data,
+      ...image
+    }).then(res => {
+      let message = '';
+      if (res.message) {
+        message = res.message
+      } else {
+        message = `upload success: <a href="${res.content.html_url}">${res.content.html_url}</a>`
+      }
+      console.log('res', res);
+      document.querySelector('.log').innerHTML = message;
+    })
+  });
+
+  handleImageChange(imageInfo => {
+    image = {
+      ...imageInfo,
+      content: imageInfo.content.split('base64,')[1]
+    };
+  });
 };
-var sendMetaData = function( title, file ){
-	var request1 = new XMLHttpRequest;
-	var url = "api/upload/file";
-	request1.open( "POST", url, false );
-	request1.setRequestHeader( "Content-Type", "application/json;charset=UTF-8" );
-	request1.onreadystatechange = function(){
-	  if( this.readyState == 4 && this.status == 200 ){
-	    sendFile( file, this.getResponseHeader( "location" ) );
-	  }
-	};
-	request1.send( JSON.stringify( { title: title, name: file.name, size: file.size } ) );
-};
-button = document.getElementById( 'button' );
-fileInput = document.getElementById( 'file' );
-titleInput = document.getElementById( 'title' );
-button.onclick = function( e ){
-	e.preventDefault();
-	var file = fileInput.files[0];
-	var title = titleInput.value;
-	if( file && title ){
-		sendMetaData( title, file );
-	}
-};
+
 </script>
 </body>
 </html>
